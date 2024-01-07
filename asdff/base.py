@@ -133,7 +133,8 @@ class AdPipelineBase(ABC):
         self, common: Mapping[str, Any], inpaint_only: Mapping[str, Any]
     ):
         common = dict(common)
-        sig = inspect.signature(self.inpaint_pipeline)
+        pipe = self.inpaint_pipeline
+        sig = inspect.signature(pipe)
         if (
             "control_image" in sig.parameters
             and "control_image" not in common
@@ -171,4 +172,5 @@ class AdPipelineBase(ABC):
             inpaint_args["control_image"] = inpaint_args["control_image"].resize(
                 crop_image.size
             )
-        return self.inpaint_pipeline(**inpaint_args)
+        pipe = self.inpaint_pipeline()
+        return pipe(**inpaint_args)

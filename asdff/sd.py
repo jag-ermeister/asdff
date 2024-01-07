@@ -7,6 +7,8 @@ from diffusers import (
     StableDiffusionControlNetPipeline,
     StableDiffusionInpaintPipeline,
     StableDiffusionPipeline,
+    StableDiffusionXLPipeline,
+    StableDiffusionXLInpaintPipeline
 )
 
 from asdff.base import AdPipelineBase
@@ -49,3 +51,24 @@ class AdCnPipeline(AdPipelineBase, StableDiffusionControlNetPipeline):
     @property
     def txt2img_class(self):
         return StableDiffusionControlNetPipeline
+
+
+class AdXlPipeline(AdPipelineBase, StableDiffusionXLPipeline):
+
+    def inpaint_pipeline(self):
+        return StableDiffusionXLInpaintPipeline(
+            vae=self.vae,
+            text_encoder=self.text_encoder,
+            text_encoder_2=self.text_encoder_2,
+            tokenizer=self.tokenizer,
+            tokenizer_2=self.tokenizer_2,
+            unet=self.unet,
+            scheduler=self.scheduler,
+            image_encoder=self.image_encoder,
+            feature_extractor=self.feature_extractor,
+            force_zeros_for_empty_prompt=self.force_zeros_for_empty_prompt,
+        )
+
+    @property
+    def txt2img_class(self):
+        return StableDiffusionXLPipeline
