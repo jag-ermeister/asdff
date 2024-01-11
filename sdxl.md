@@ -11,13 +11,13 @@ from asdff import __version__
 from functools import partial
 import torch
 from diffusers import StableDiffusionPipeline, DDIMScheduler, DPMSolverMultistepScheduler
-from asdff import AdXlPipeline, yolo_detector
+from asdff import AdStableDiffusionXlPipeline, yolo_detector
 from huggingface_hub import hf_hub_download
 from PIL import Image
 from datetime import datetime
 from diffusers.utils import load_image
 
-pipe = AdXlPipeline.from_pretrained("diffusers_model", torch_dtype=torch.float16)
+pipe = AdStableDiffusionXlPipeline.from_pretrained("diffusers_model", torch_dtype=torch.float16)
 pipe.safety_checker = None
 pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
 pipe = pipe.to("cuda")

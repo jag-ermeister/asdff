@@ -53,7 +53,7 @@ class AdCnPipeline(AdPipelineBase, StableDiffusionControlNetPipeline):
         return StableDiffusionControlNetPipeline
 
 
-class AdXlPipeline(AdPipelineBase, StableDiffusionXLPipeline):
+class AdStableDiffusionXlPipeline(AdPipelineBase, StableDiffusionXLPipeline):
 
     def inpaint_pipeline(self):
         return StableDiffusionXLInpaintPipeline(

@@ -1,1 +1,1 @@
-from asdff import AdXlPipeline  # noqa: F401
+from asdff import AdStableDiffusionXlPipeline  # noqa: F401
