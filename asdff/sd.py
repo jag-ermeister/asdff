@@ -14,7 +14,7 @@ from diffusers import (
 from asdff.base import AdPipelineBase
 
 
-class AdPipeline(AdPipelineBase, StableDiffusionPipeline):
+class AdStableDiffusionPipeline(AdPipelineBase, StableDiffusionPipeline):
     @cached_property
     def inpaint_pipeline(self):
         return StableDiffusionInpaintPipeline(
