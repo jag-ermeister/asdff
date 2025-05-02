@@ -77,8 +77,7 @@ class AdStableDiffusionXlPipeline(AdPipelineBase, StableDiffusionXLPipeline):
 
 
 class AdFluxFillPipeline(AdPipelineBase, FluxPipeline):
-    def __init__(self, debug=False, **kwargs):
-        self.debug = debug
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
     def inpaint_pipeline(self):
