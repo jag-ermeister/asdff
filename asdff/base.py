@@ -284,44 +284,32 @@ class AdPipelineBase(ABC):
             inpaint_only: Mapping[str, Any],
             init_image: Image.Image,
             mask: Image.Image,
-            bbox_padded: tuple[int, int, int, int],  # unused for Flux Fill
+            bbox_padded: tuple[int, int, int, int],  # <-- unused now
     ):
-        # 🚫 DO NOT CROP: Flux Fill expects full-sized images and masks
+        # 🚫 DO NOT CROP: FluxFill expects full-size inputs
+        # Just convert the images and mask directly
 
-        # ✅ Binarize the mask
-        binary_mask = mask.point(lambda p: 255 if p > 128 else 0).convert("L")
-
-        # 🧠 Convert to torch tensors
+        # Convert PIL to float16 tensors on CUDA
         to_tensor = transforms.ToTensor()
         image_tensor = to_tensor(init_image).unsqueeze(0).to(dtype=torch.float16, device="cuda")
-        mask_tensor = to_tensor(binary_mask).unsqueeze(0).to(dtype=torch.float16, device="cuda")
+        mask_tensor = to_tensor(mask).unsqueeze(0).to(dtype=torch.float16, device="cuda")
 
-        masked_image = image_tensor * (1 - mask_tensor)
-
-        if self.debug:
-            print("Saving debug tensor images...")
-            init_image.save("debug_full_input.png")
-            binary_mask.save("debug_binary_mask.png")
-            save_image(image_tensor, "debug_image_tensor.png")
-            save_image(mask_tensor, "debug_mask_tensor.png")
-            save_image(masked_image, "debug_tensor_masked_input.png")
-
-        # 🛠 Prepare inpainting args
+        # Merge args
         inpaint_args = self._get_inpaint_args(common, inpaint_only)
         inpaint_args["image"] = image_tensor
         inpaint_args["mask_image"] = mask_tensor
 
-        # Optional control image conversion
+        # Optional: Resize and convert control_image if present
         if "control_image" in inpaint_args:
             control_img = inpaint_args["control_image"].resize(init_image.size)
             control_tensor = to_tensor(control_img).unsqueeze(0).to(dtype=torch.float16, device="cuda")
             inpaint_args["control_image"] = control_tensor
 
-        # 🧪 Sanity checks
+        # Sanity check
         print("🔍 image shape:", image_tensor.shape, image_tensor.dtype)
         print("🔍 mask shape:", mask_tensor.shape, mask_tensor.dtype)
 
-        # 🌀 Run inpainting pipeline
+        # Run inpainting
         pipe = self.inpaint_pipeline()
         with torch.autocast("cuda", dtype=torch.float16):
             return pipe(**inpaint_args)
