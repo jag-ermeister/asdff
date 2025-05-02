@@ -55,8 +55,10 @@ class AdPipelineBase(ABC):
             txt2img_only = {}
         if inpaint_only is None:
             inpaint_only = {}
-        if "strength" not in inpaint_only:
-            inpaint_only = {**inpaint_only, "strength": 0.4}
+
+        # This is not supported by Flux
+        # if "strength" not in inpaint_only:
+        #     inpaint_only = {**inpaint_only, "strength": 0.4}
 
         if detectors is None:
             detectors = [self.default_detector]
