@@ -9,6 +9,8 @@ from PIL import Image
 import torch
 from torchvision import transforms
 from torchvision.utils import save_image
+import numpy as np
+
 
 from asdff.utils import (
     ADOutput,
@@ -290,6 +292,52 @@ class AdPipelineBase(ABC):
     #     with torch.autocast("cuda", dtype=torch.float16):
     #         return pipe(**inpaint_args)
 
+    # def process_inpainting(
+    #         self,
+    #         common: Mapping[str, Any],
+    #         inpaint_only: Mapping[str, Any],
+    #         init_image: Image.Image,
+    #         mask: Image.Image,
+    #         bbox_padded: tuple[int, int, int, int],  # unused
+    # ):
+    #     # 🟢 Store a copy ONLY for debugging
+    #     debug_copy = init_image.copy()
+    #
+    #     # Binarize mask
+    #     binary_mask = mask.point(lambda p: 255 if p > 128 else 0).convert("L")
+    #
+    #     # Convert to float16 tensors on CUDA
+    #     to_tensor = transforms.ToTensor()
+    #     image_tensor = to_tensor(init_image).unsqueeze(0).to(dtype=torch.float16, device="cuda")
+    #     mask_tensor = to_tensor(binary_mask).unsqueeze(0).to(dtype=torch.float16, device="cuda")
+    #
+    #     masked_image = image_tensor * (1.0 - mask_tensor)
+    #
+    #     # Debug output
+    #     if getattr(self, "debug", False):
+    #         print("[DEBUG] Saving intermediate images")
+    #         debug_copy.save("debug_full_input.png")
+    #         binary_mask.save("debug_binary_mask.png")
+    #         save_image(image_tensor, "debug_image_tensor.png")
+    #         save_image(mask_tensor, "debug_mask_tensor.png")
+    #         save_image(masked_image, "debug_masked_input.png")
+    #
+    #     inpaint_args = self._get_inpaint_args(common, inpaint_only)
+    #     inpaint_args["image"] = image_tensor
+    #     inpaint_args["mask_image"] = mask_tensor
+    #
+    #     if "control_image" in inpaint_args:
+    #         control_img = inpaint_args["control_image"].resize(init_image.size)
+    #         control_tensor = to_tensor(control_img).unsqueeze(0).to(dtype=torch.float16, device="cuda")
+    #         inpaint_args["control_image"] = control_tensor
+    #
+    #     print("🔍 image shape:", image_tensor.shape, image_tensor.dtype)
+    #     print("🔍 mask shape:", mask_tensor.shape, mask_tensor.dtype)
+    #
+    #     pipe = self.inpaint_pipeline()
+    #     with torch.autocast("cuda", dtype=torch.float16):
+    #         return pipe(**inpaint_args)
+
     def process_inpainting(
             self,
             common: Mapping[str, Any],
@@ -298,28 +346,31 @@ class AdPipelineBase(ABC):
             mask: Image.Image,
             bbox_padded: tuple[int, int, int, int],  # unused
     ):
-        # 🟢 Store a copy ONLY for debugging
-        debug_copy = init_image.copy()
-
-        # Binarize mask
+        # ✅ Binarize mask
         binary_mask = mask.point(lambda p: 255 if p > 128 else 0).convert("L")
 
-        # Convert to float16 tensors on CUDA
+        # ✅ Convert to float16 tensors on CUDA
         to_tensor = transforms.ToTensor()
         image_tensor = to_tensor(init_image).unsqueeze(0).to(dtype=torch.float16, device="cuda")
         mask_tensor = to_tensor(binary_mask).unsqueeze(0).to(dtype=torch.float16, device="cuda")
 
+        # ✅ Clamp inputs and remove NaNs/infs
+        image_tensor = image_tensor.nan_to_num(nan=0.0, posinf=1.0, neginf=0.0).clamp(0, 1)
+        mask_tensor = mask_tensor.nan_to_num(nan=0.0, posinf=1.0, neginf=0.0).clamp(0, 1)
+
+        # ✅ Masked image for debug visibility
         masked_image = image_tensor * (1.0 - mask_tensor)
 
-        # Debug output
+        # 🧪 Save debug images
         if getattr(self, "debug", False):
             print("[DEBUG] Saving intermediate images")
-            debug_copy.save("debug_full_input.png")
+            init_image.save("debug_full_input.png")
             binary_mask.save("debug_binary_mask.png")
             save_image(image_tensor, "debug_image_tensor.png")
             save_image(mask_tensor, "debug_mask_tensor.png")
             save_image(masked_image, "debug_masked_input.png")
 
+        # 🛠 Prepare args for pipeline
         inpaint_args = self._get_inpaint_args(common, inpaint_only)
         inpaint_args["image"] = image_tensor
         inpaint_args["mask_image"] = mask_tensor
@@ -329,9 +380,35 @@ class AdPipelineBase(ABC):
             control_tensor = to_tensor(control_img).unsqueeze(0).to(dtype=torch.float16, device="cuda")
             inpaint_args["control_image"] = control_tensor
 
+        # 🔍 Log tensor shape info
         print("🔍 image shape:", image_tensor.shape, image_tensor.dtype)
         print("🔍 mask shape:", mask_tensor.shape, mask_tensor.dtype)
 
+        # 🌀 Call pipeline
         pipe = self.inpaint_pipeline()
         with torch.autocast("cuda", dtype=torch.float16):
-            return pipe(**inpaint_args)
+            output = pipe(**inpaint_args)
+
+        # 🚨 Check output
+        if isinstance(output[0][0], Image.Image):
+            np_img = np.array(output[0][0])
+            if np.isnan(np_img).any():
+                print("[WARN] Output image contains NaNs")
+            elif np_img.max() == 0:
+                print("[WARN] Output image is completely black")
+
+        # ✅ Validate the pipeline output (catch bad generations)
+        if isinstance(output[0][0], torch.Tensor):
+            tensor = output[0][0]
+        elif isinstance(output[0][0], Image.Image):
+            tensor = transforms.ToTensor()(output[0][0]).to("cuda", dtype=torch.float16)
+        else:
+            print("[⚠️] Unexpected output format:", type(output[0][0]))
+            return output
+
+        if torch.isnan(tensor).any() or torch.isinf(tensor).any():
+            print("[❌ ERROR] Output contains NaNs or Infs!")
+        else:
+            print(f"[✅ OK] Output tensor stats: min={tensor.min().item():.4f}, max={tensor.max().item():.4f}")
+
+        return output
