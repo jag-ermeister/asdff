@@ -82,12 +82,11 @@ class AdPipelineBase(ABC):
         final_images = []
 
         for i, init_image in enumerate(txt2img_images):
-            original_image = init_image.copy()
-            init_images.append(original_image)
+            init_images.append(init_image.copy())
             final_image = None
 
             for j, detector in enumerate(detectors):
-                masks = detector(original_image)
+                masks = detector(init_image)
                 if masks is None:
                     logger.info(
                         f"No object detected on {ordinal(i + 1)} image with {ordinal(j + 1)} detector."
@@ -119,28 +118,33 @@ class AdPipelineBase(ABC):
 
                     mask = mask_gaussian_blur(mask, mask_blur)
 
-                    # ✅ Use fresh image for every mask
-                    fresh_image = original_image.copy()
+                    if getattr(self, "debug", False):
+                        mask.save(f"debug_mask_img_{i}_det{j}_obj{k}.png")
 
+                    # Run inpainting
                     inpaint_output = self.process_inpainting(
                         common,
                         inpaint_only,
-                        fresh_image,
+                        init_image,
                         mask,
-                        None,  # bbox_padded is unused in FluxFill
+                        None  # bbox_padded is unused in FluxFill
                     )
 
                     inpaint_image = inpaint_output[0][0]
 
-                    # final_image = composite(
-                    #     init_image,
-                    #     mask,
-                    #     inpaint_image,
-                    #     bbox_padded,
-                    # )
+                    # ✅ Composite only masked region
+                    # Create a dummy bbox_padded to get around TypeError in composite function
+                    # It isn't really necessary because we are creating a full size image
+                    bbox_padded = (0, 0, init_image.width, init_image.height)
+                    final_image = composite(
+                        init_image,
+                        mask,
+                        inpaint_image,
+                        bbox_padded  # full-size input, no cropping
+                    )
 
-                    final_image = inpaint_image  # overwrites for now
-                    original_image = final_image
+                    # For next round of masking, use updated image
+                    init_image = final_image
 
             if final_image is not None:
                 final_images.append(final_image)
