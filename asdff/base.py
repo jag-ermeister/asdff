@@ -42,15 +42,15 @@ class AdPipelineBase(ABC):
         raise NotImplementedError
 
     def __call__(  # noqa: C901
-        self,
-        common: Mapping[str, Any] | None = None,
-        txt2img_only: Mapping[str, Any] | None = None,
-        inpaint_only: Mapping[str, Any] | None = None,
-        images: Image.Image | Iterable[Image.Image] | None = None,
-        detectors: DetectorType | Iterable[DetectorType] | None = None,
-        mask_dilation: int = 4,
-        mask_blur: int = 4,
-        mask_padding: int = 32,
+            self,
+            common: Mapping[str, Any] | None = None,
+            txt2img_only: Mapping[str, Any] | None = None,
+            inpaint_only: Mapping[str, Any] | None = None,
+            images: Image.Image | Iterable[Image.Image] | None = None,
+            detectors: DetectorType | Iterable[DetectorType] | None = None,
+            mask_dilation: int = 4,
+            mask_blur: int = 4,
+            mask_padding: int = 32,
     ):
         if common is None:
             common = {}
@@ -82,11 +82,12 @@ class AdPipelineBase(ABC):
         final_images = []
 
         for i, init_image in enumerate(txt2img_images):
-            init_images.append(init_image.copy())
+            original_image = init_image.copy()
+            init_images.append(original_image)
             final_image = None
 
             for j, detector in enumerate(detectors):
-                masks = detector(init_image)
+                masks = detector(original_image)
                 if masks is None:
                     logger.info(
                         f"No object detected on {ordinal(i + 1)} image with {ordinal(j + 1)} detector."
@@ -96,6 +97,7 @@ class AdPipelineBase(ABC):
                 for k, mask in enumerate(masks):
                     mask = mask.convert("L")
                     mask = mask_dilate(mask, mask_dilation)
+
                     # bbox = mask.getbbox()
                     # if bbox is None:
                     #     logger.info(f"No object in {ordinal(k + 1)} mask.")
@@ -117,14 +119,16 @@ class AdPipelineBase(ABC):
 
                     mask = mask_gaussian_blur(mask, mask_blur)
 
+                    # ✅ Use fresh image for every mask
+                    fresh_image = original_image.copy()
+
                     inpaint_output = self.process_inpainting(
                         common,
                         inpaint_only,
-                        init_image,
+                        fresh_image,
                         mask,
-                        None,  # Unused now
+                        None,  # bbox_padded is unused in FluxFill
                     )
-
 
                     inpaint_image = inpaint_output[0][0]
 
@@ -134,8 +138,9 @@ class AdPipelineBase(ABC):
                     #     inpaint_image,
                     #     bbox_padded,
                     # )
-                    final_image = inpaint_image
-                    init_image = final_image
+
+                    final_image = inpaint_image  # overwrites for now
+                    original_image = final_image
 
             if final_image is not None:
                 final_images.append(final_image)
