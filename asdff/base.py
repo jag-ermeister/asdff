@@ -7,6 +7,7 @@ from typing import Any, Callable, Iterable, List, Mapping, Optional
 from diffusers.utils import logging
 from PIL import Image
 import torch
+from torchvision import transforms
 
 from asdff.utils import (
     ADOutput,
@@ -157,27 +158,62 @@ class AdPipelineBase(ABC):
         txt2img_args = self._get_txt2img_args(common, txt2img_only)
         return self.txt2img_class.__call__(self, **txt2img_args)
 
+    # def process_inpainting(
+    #     self,
+    #     common: Mapping[str, Any],
+    #     inpaint_only: Mapping[str, Any],
+    #     init_image: Image.Image,
+    #     mask: Image.Image,
+    #     bbox_padded: tuple[int, int, int, int],
+    # ):
+    #     crop_image = init_image.crop(bbox_padded)
+    #     crop_mask = mask.crop(bbox_padded)
+    #     inpaint_args = self._get_inpaint_args(common, inpaint_only)
+    #     inpaint_args["image"] = crop_image
+    #     inpaint_args["mask_image"] = crop_mask
+    #
+    #     if "control_image" in inpaint_args:
+    #         inpaint_args["control_image"] = inpaint_args["control_image"].resize(
+    #             crop_image.size
+    #         )
+    #     pipe = self.inpaint_pipeline()
+    #     return pipe(**inpaint_args)
+
+    # Doing this for Flux Fill.  Is is totally necessary?
+    # Use autocast to ensure image gets converted to float16 to match model weights
     def process_inpainting(
-        self,
-        common: Mapping[str, Any],
-        inpaint_only: Mapping[str, Any],
-        init_image: Image.Image,
-        mask: Image.Image,
-        bbox_padded: tuple[int, int, int, int],
+            self,
+            common: Mapping[str, Any],
+            inpaint_only: Mapping[str, Any],
+            init_image: Image.Image,
+            mask: Image.Image,
+            bbox_padded: tuple[int, int, int, int],
     ):
+        # Crop to the region of interest
         crop_image = init_image.crop(bbox_padded)
         crop_mask = mask.crop(bbox_padded)
-        inpaint_args = self._get_inpaint_args(common, inpaint_only)
-        inpaint_args["image"] = crop_image
-        inpaint_args["mask_image"] = crop_mask
 
+        # Convert PIL to float16 tensors
+        to_tensor = transforms.ToTensor()
+        image_tensor = to_tensor(crop_image).unsqueeze(0).to(dtype=torch.float16, device="cuda")
+        mask_tensor = to_tensor(crop_mask).unsqueeze(0).to(dtype=torch.float16, device="cuda")
+
+        inpaint_args = self._get_inpaint_args(common, inpaint_only)
+        inpaint_args["image"] = image_tensor
+        inpaint_args["mask_image"] = mask_tensor
+
+        # Resize and convert control_image if present
         if "control_image" in inpaint_args:
-            inpaint_args["control_image"] = inpaint_args["control_image"].resize(
-                crop_image.size
-            )
+            control_img = inpaint_args["control_image"].resize(crop_image.size)
+            control_tensor = to_tensor(control_img).unsqueeze(0).to(dtype=torch.float16, device="cuda")
+            inpaint_args["control_image"] = control_tensor
+
+        # Sanity check
+        print("🔍 image dtype:", inpaint_args["image"].dtype, inpaint_args["image"].device)
+        print("🔍 mask dtype:", inpaint_args["mask_image"].dtype, inpaint_args["mask_image"].device)
+
+        # Call the inpainting pipeline
         pipe = self.inpaint_pipeline()
 
-        # Doing this for Flux Fill.  Is is totally necessary?
-        # Use autocast to ensure image gets converted to float16 to match model weights
         with torch.autocast("cuda", dtype=torch.float16):
             return pipe(**inpaint_args)
