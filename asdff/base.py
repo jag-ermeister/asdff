@@ -82,11 +82,13 @@ class AdPipelineBase(ABC):
         final_images = []
 
         for i, init_image in enumerate(txt2img_images):
-            init_images.append(init_image.copy())
+            original_image = init_image.copy()
+            init_images.append(original_image.copy())
+            composite_image = original_image.copy()
             final_image = None
 
             for j, detector in enumerate(detectors):
-                masks = detector(init_image)
+                masks = detector(original_image)
                 if masks is None:
                     logger.info(
                         f"No object detected on {ordinal(i + 1)} image with {ordinal(j + 1)} detector."
@@ -122,10 +124,11 @@ class AdPipelineBase(ABC):
                         mask.save(f"debug_mask_img_{i}_det{j}_obj{k}.png")
 
                     # Run inpainting
+                    current_image = final_image if final_image is not None else init_image
                     inpaint_output = self.process_inpainting(
                         common,
                         inpaint_only,
-                        init_image,
+                        current_image,
                         mask,
                         None  # bbox_padded is unused in FluxFill
                     )
@@ -135,16 +138,16 @@ class AdPipelineBase(ABC):
                     # ✅ Composite only masked region
                     # Create a dummy bbox_padded to get around TypeError in composite function
                     # It isn't really necessary because we are creating a full size image
-                    bbox_padded = (0, 0, init_image.width, init_image.height)
+                    bbox_padded = (0, 0, composite_image.width, composite_image.height)
                     final_image = composite(
-                        init_image,
+                        composite_image,
                         mask,
                         inpaint_image,
                         bbox_padded  # full-size input, no cropping
                     )
 
                     # For next round of masking, use updated image
-                    init_image = final_image
+                    composite_image = final_image
 
             if final_image is not None:
                 final_images.append(final_image)
@@ -288,13 +291,16 @@ class AdPipelineBase(ABC):
     #         return pipe(**inpaint_args)
 
     def process_inpainting(
-        self,
-        common: Mapping[str, Any],
-        inpaint_only: Mapping[str, Any],
-        init_image: Image.Image,
-        mask: Image.Image,
-        bbox_padded: tuple[int, int, int, int],  # unused
+            self,
+            common: Mapping[str, Any],
+            inpaint_only: Mapping[str, Any],
+            init_image: Image.Image,
+            mask: Image.Image,
+            bbox_padded: tuple[int, int, int, int],  # unused
     ):
+        # 🟢 Store a copy ONLY for debugging
+        debug_copy = init_image.copy()
+
         # Binarize mask
         binary_mask = mask.point(lambda p: 255 if p > 128 else 0).convert("L")
 
@@ -306,9 +312,9 @@ class AdPipelineBase(ABC):
         masked_image = image_tensor * (1.0 - mask_tensor)
 
         # Debug output
-        if True:
+        if getattr(self, "debug", False):
             print("[DEBUG] Saving intermediate images")
-            init_image.save("debug_full_input.png")
+            debug_copy.save("debug_full_input.png")
             binary_mask.save("debug_binary_mask.png")
             save_image(image_tensor, "debug_image_tensor.png")
             save_image(mask_tensor, "debug_mask_tensor.png")
@@ -329,4 +335,3 @@ class AdPipelineBase(ABC):
         pipe = self.inpaint_pipeline()
         with torch.autocast("cuda", dtype=torch.float16):
             return pipe(**inpaint_args)
-
