@@ -6,6 +6,7 @@ from typing import Any, Callable, Iterable, List, Mapping, Optional
 
 from diffusers.utils import logging
 from PIL import Image
+import torch
 
 from asdff.utils import (
     ADOutput,
@@ -175,4 +176,8 @@ class AdPipelineBase(ABC):
                 crop_image.size
             )
         pipe = self.inpaint_pipeline()
-        return pipe(**inpaint_args)
+
+        # Doing this for Flux Fill.  Is is totally necessary?
+        # Use autocast to ensure image gets converted to float16 to match model weights
+        with torch.autocast("cuda", dtype=torch.float16):
+            return pipe(**inpaint_args)
