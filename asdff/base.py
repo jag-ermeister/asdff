@@ -296,13 +296,15 @@ class AdPipelineBase(ABC):
         image_tensor = to_tensor(init_image).unsqueeze(0).to(dtype=torch.float16, device="cuda")
         mask_tensor = to_tensor(binary_mask).unsqueeze(0).to(dtype=torch.float16, device="cuda")
 
-        # 📸 Debug outputs
-        init_image.save("debug_full_input.png")
-        binary_mask.save("debug_binary_mask.png")
-        save_image(image_tensor, "debug_tensor_input.png")
-        save_image(mask_tensor, "debug_tensor_mask.png")
         masked_image = image_tensor * (1 - mask_tensor)
-        save_image(masked_image, "debug_tensor_masked_input.png")
+
+        if self.debug:
+            print("Saving debug tensor images...")
+            init_image.save("debug_full_input.png")
+            binary_mask.save("debug_binary_mask.png")
+            save_image(image_tensor, "debug_image_tensor.png")
+            save_image(mask_tensor, "debug_mask_tensor.png")
+            save_image(masked_image, "debug_tensor_masked_input.png")
 
         # 🛠 Prepare inpainting args
         inpaint_args = self._get_inpaint_args(common, inpaint_only)
