@@ -349,10 +349,10 @@ class AdPipelineBase(ABC):
         # ✅ Binarize mask
         binary_mask = mask.point(lambda p: 255 if p > 128 else 0).convert("L")
 
-        # ✅ Convert to float16 tensors on CUDA
+        # ✅ Convert to bfloat16 tensors on CUDA
         to_tensor = transforms.ToTensor()
-        image_tensor = to_tensor(init_image).unsqueeze(0).to(dtype=torch.float16, device="cuda")
-        mask_tensor = to_tensor(binary_mask).unsqueeze(0).to(dtype=torch.float16, device="cuda")
+        image_tensor = to_tensor(init_image).unsqueeze(0).to(dtype=torch.bfloat16, device="cuda")
+        mask_tensor = to_tensor(binary_mask).unsqueeze(0).to(dtype=torch.bfloat16, device="cuda")
 
         # ✅ Clamp inputs and remove NaNs/infs
         image_tensor = image_tensor.nan_to_num(nan=0.0, posinf=1.0, neginf=0.0).clamp(0, 1)
@@ -377,7 +377,7 @@ class AdPipelineBase(ABC):
 
         if "control_image" in inpaint_args:
             control_img = inpaint_args["control_image"].resize(init_image.size)
-            control_tensor = to_tensor(control_img).unsqueeze(0).to(dtype=torch.float16, device="cuda")
+            control_tensor = to_tensor(control_img).unsqueeze(0).to(dtype=torch.bfloat16, device="cuda")
             inpaint_args["control_image"] = control_tensor
 
         # 🔍 Log tensor shape info
@@ -386,7 +386,7 @@ class AdPipelineBase(ABC):
 
         # 🌀 Call pipeline
         pipe = self.inpaint_pipeline()
-        with torch.autocast("cuda", dtype=torch.float16):
+        with torch.autocast("cuda", dtype=torch.bfloat16):
             output = pipe(**inpaint_args)
 
         # 🚨 Check output
@@ -401,7 +401,7 @@ class AdPipelineBase(ABC):
         if isinstance(output[0][0], torch.Tensor):
             tensor = output[0][0]
         elif isinstance(output[0][0], Image.Image):
-            tensor = transforms.ToTensor()(output[0][0]).to("cuda", dtype=torch.float16)
+            tensor = transforms.ToTensor()(output[0][0]).to("cuda", dtype=torch.bfloat16)
         else:
             print("[⚠️] Unexpected output format:", type(output[0][0]))
             return output
