@@ -77,9 +77,46 @@ class AdStableDiffusionXlPipeline(AdPipelineBase, StableDiffusionXLPipeline):
 
 
 class AdFluxFillPipeline(AdPipelineBase, FluxPipeline):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.register_modules(**kwargs)
+    def __init__(
+        self,
+        transformer,
+        scheduler,
+        vae,
+        text_encoder,
+        text_encoder_2,
+        tokenizer,
+        tokenizer_2,
+        image_encoder=None,
+        feature_extractor=None,
+    ):
+        # Explicitly initialize FluxPipeline with expected positional arguments
+        FluxPipeline.__init__(
+            self,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            text_encoder_2=text_encoder_2,
+            tokenizer_2=tokenizer_2,
+            transformer=transformer,
+            image_encoder=image_encoder,
+            feature_extractor=feature_extractor,
+        )
+
+        # Initialize AdPipelineBase if needed
+        AdPipelineBase.__init__(self)
+
+        self.register_modules(
+            transformer=transformer,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=text_encoder,
+            text_encoder_2=text_encoder_2,
+            tokenizer=tokenizer,
+            tokenizer_2=tokenizer_2,
+            image_encoder=image_encoder,
+            feature_extractor=feature_extractor,
+        )
 
     def inpaint_pipeline(self):
         return FluxFillPipeline(
